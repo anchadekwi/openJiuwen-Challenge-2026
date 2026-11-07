@@ -1,0 +1,32 @@
+{
+ "math_0000": {
+  "answer": "389",
+  "how": "fastpath",
+  "tokens": 0
+ },
+ "data_analysis_0002": {
+  "answer": "158",
+  "how": "fastpath",
+  "tokens": 0
+ },
+ "data_analysis_0006": {
+  "answer": "284",
+  "how": "fastpath",
+  "tokens": 0
+ },
+ "math_0004": {
+  "answer": "1735",
+  "how": "fastpath",
+  "tokens": 0
+ },
+ "search_0005": {
+  "answer": "Osaka",
+  "how": "fastpath",
+  "tokens": 0
+ },
+ "search_0001": {
+  "answer": "1983",
+  "how": "fastpath",
+  "tokens": 0
+ }
+}
