@@ -1,4 +1,3 @@
-"""Harness package built for openJiuwen integration."""
 try:
     import openjiuwen  # noqa: F401
     OPENJIUWEN_AVAILABLE = True

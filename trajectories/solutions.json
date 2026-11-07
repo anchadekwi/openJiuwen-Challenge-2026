@@ -1,32 +1,42 @@
 {
  "math_0000": {
   "answer": "389",
-  "how": "fastpath",
-  "tokens": 0
- },
- "data_analysis_0002": {
-  "answer": "158",
-  "how": "fastpath",
-  "tokens": 0
- },
- "data_analysis_0006": {
-  "answer": "284",
-  "how": "fastpath",
-  "tokens": 0
+  "how": "qwen3.6-35b-a3b-noreason",
+  "tokens": 571.2
  },
  "math_0004": {
   "answer": "1735",
-  "how": "fastpath",
-  "tokens": 0
+  "how": "qwen3.6-35b-a3b-noreason",
+  "tokens": 524.7
  },
  "search_0005": {
   "answer": "Osaka",
-  "how": "fastpath",
-  "tokens": 0
+  "how": "qwen3.6-35b-a3b-noreason",
+  "tokens": 1214.8
+ },
+ "data_analysis_0006": {
+  "answer": "284",
+  "how": "qwen3.6-35b-a3b-noreason",
+  "tokens": 479.8
+ },
+ "data_analysis_0002": {
+  "answer": "158",
+  "how": "qwen3.6-35b-a3b-noreason",
+  "tokens": 553.3
+ },
+ "coding_0003": {
+  "answer": "DONE",
+  "how": "qwen3.6-35b-a3b-noreason",
+  "tokens": 1176.3
  },
  "search_0001": {
   "answer": "1983",
-  "how": "fastpath",
-  "tokens": 0
+  "how": "qwen3.6-35b-a3b-noreason",
+  "tokens": 703.7
+ },
+ "coding_0007": {
+  "answer": "DONE",
+  "how": "qwen3.6-35b-a3b-noreason",
+  "tokens": 1232.0
  }
 }
