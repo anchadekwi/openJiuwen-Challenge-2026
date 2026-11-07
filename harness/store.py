@@ -1,31 +1,85 @@
-"""Сохранение ответов. Файл решений обновляется атомарно после КАЖДОЙ решённой задачи."""
+"""Атомарная запись ответов и файла решений.
+
+answer.txt лежит строго рядом с task.json.
+Для невыполненной и нерешённой задачи файла нет.
+solutions.json перезаписывается после каждого засчитанного ответа.
+"""
 import json
 import os
 import threading
 
 _lock = threading.Lock()
-_results = {}
+
+
+def answer_path(task):
+    return os.path.join(task["_dir"], "answer.txt")
 
 
 def write_answer(task, answer):
-    answer = answer.strip()
-    # В регламенте «answer.txt в каталоге задачи», в инструкциях — «в current directory»
-    # (= workspace). Пишем в оба места, чтобы не потерять решение.
-    for d in {task["_dir"], task["_work"]}:
-        with open(os.path.join(d, "answer.txt"), "w", encoding="utf-8") as f:
-            f.write(answer + "\n")
+    """Только рядом с task.json. В workspace/ файл не кладём."""
+    ans_str = str(answer).strip()
+    target = answer_path(task)
+    parent = os.path.dirname(target)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    tmp = target + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(ans_str + "\n")
+    os.replace(tmp, target)
 
 
-def record(task, answer, how, tokens, out_path):
+def remove_answer(task):
+    """Невыполнимые задачи сдаются отсутствием answer.txt."""
+    seen = set()
+    for base in (task.get("_dir"), task.get("_work")):
+        if not base:
+            continue
+        p = os.path.join(base, "answer.txt")
+        if p in seen:
+            continue
+        seen.add(p)
+        if os.path.exists(p):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
+def dump_Aggregate(out_path, results, spent):
+    if not out_path:
+        return
     with _lock:
-        _results[task["task_id"]] = {"answer": answer, "how": how, "tokens": round(tokens, 1)}
-        if not out_path:
-            return
+        parent = os.path.dirname(os.path.abspath(out_path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        payload = {
+            "spent": round(float(spent or 0), 1),
+            "solved": len(results),
+            "answers": results,
+        }
+        tmp = out_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, out_path)
+
+
+def dump_everywhere(primary, tasks_dir, results, spent):
+    """Пишет solutions после каждого ответа.
+
+    Контейнер read-only, кроме /tmp и смонтированного каталога задач.
+    Если OUT не примонтирован, копия в каталоге задач всё равно переживёт контейнер.
+    """
+    paths = []
+    for p in (primary, os.path.join(tasks_dir, "solutions.json") if tasks_dir else None, "/tmp/solutions.json"):
+        if p and p not in paths:
+            paths.append(p)
+    ok = []
+    for p in paths:
         try:
-            os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-            tmp = out_path + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(_results, f, ensure_ascii=False, indent=1)
-            os.replace(tmp, out_path)
+            dump_Aggregate(p, results, spent)
+            ok.append(p)
         except OSError:
-            pass  # OUT может быть недоступен для записи (контейнер --read-only) — answer.txt уже записан
+            continue
+    return ok
