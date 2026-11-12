@@ -13,10 +13,13 @@ PRIOR_COST = {
 }
 
 IMPOSSIBLE_PATTERNS = [
-    r"\b(?:https?|ftp)://\S+",
-    r"\b(?:api\.|www\.)\S+\.\w{2,}",
-    r"\b(?:current|today'?s|live)\s+(?:weather|stock|price|exchange rate|news|bitcoin)\b",
-    r"\b(?:cannot be determined|unsolvable|impossible to know|not enough information)\b",
+    # Ссылка сама по себе не признак невыполнимости ("photos: https://..." — просто подпись).
+    # Невыполнимо только когда условие требует ИДТИ по ссылке / в интернет.
+    r"\b(?:fetch|download|open|visit|browse|scrape|look\s+up|go\s+to|check)\b[^.?!]{0,60}(?:https?|ftp)://\S+",
+    r"\b(?:fetch|download|open|visit|browse|scrape|look\s+up|go\s+to|check)\b[^.?!]{0,60}\b(?:api\.|www\.)\S+\.\w{2,}",
+    # "current stock" / "today's stock" — обычные слова про склад, не биржа.
+    r"\b(?:current|today'?s|live)\s+(?:weather|price|exchange rate|news|bitcoin|stock\s+(?:price|quote|market))\b",
+    r"\b(?:cannot be determined|unsolvable|impossible to know)\b",
 ]
 
 

@@ -19,8 +19,17 @@ except ImportError:
 SYSTEM = (
     "Solve one task in the working directory. No prose, no markdown. "
     "Math and CSV: one python_exec that prints ONLY the final answer, then finish(answer) with that exact text. "
-    "Coding: write_file the full corrected mylib.py. Never edit tests. When tests pass, finish(\"DONE\"). "
-    "If a required entity, file or column is missing, call unsolvable(reason). "
+    "Answer exactly the quantity the question asks for (e.g. total shipped, total lost, the state after the first N "
+    "operations or just before the last one), not automatically the final stock. "
+    "Use exact arithmetic: for percentages use integers or fractions and round only at the very end. "
+    "Print whole numbers without a decimal part. "
+    "If a number you need is not given (e.g. 'some', 'unknown'), or a required entity, file or column is missing, "
+    "call unsolvable(reason); never assume a value. "
+    "Search: a name in the knowledge base may have aliases (aka) or a shortened form - these are the same entity; "
+    "if a note says a fact is outdated, use the newer fact; honour extra constraints in the question (e.g. birth year). "
+    "Coding: write_file the full corrected mylib.py. Never edit tests. Never special-case test values and never "
+    "override __eq__; if the tests contradict each other or cannot be satisfied by a legitimate fix, call "
+    "unsolvable(reason). When tests pass, finish(\"DONE\"). "
     "Do not use heredocs, cat, echo or a second verification command."
 )
 
@@ -217,10 +226,56 @@ def _hashes(files):
 
 
 def _int_answer(text):
+    """Целое число; '384.0' нормализуется в '384' (дробные значения не трогаем)."""
     s = (text or "").strip()
-    if _INT_ANSWER.fullmatch(s):
-        return s
-    return None
+    m = re.fullmatch(r"(-?\d+)(?:\.0+)?", s)
+    return m.group(1) if m else None
+
+
+# Признаки "обмана" тестов: прохождение за счёт хаков, а не исправления логики.
+_CHEAT_RE = re.compile(r"__eq__|__ne__|__bool__|__hash__|sys\.modules|sys\.exit|os\._exit|\bbuiltins\b")
+
+
+def _tests_contradict(test_paths):
+    """True, если в тестах одно и то же чистое обращение f(<константы>) сравнивается
+    с РАЗНЫМИ константами (assert double(3) == 6 и assert double(3) == 7).
+    Вызовы без аргументов и методы не учитываем: у них может быть состояние."""
+    import ast
+    seen = {}
+    for p in test_paths:
+        try:
+            with open(p, encoding="utf-8") as fp:
+                tree = ast.parse(fp.read())
+        except (OSError, SyntaxError):
+            continue
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Assert) and isinstance(node.test, ast.Compare)):
+                continue
+            cmp_ = node.test
+            if len(cmp_.ops) != 1 or not isinstance(cmp_.ops[0], ast.Eq):
+                continue
+            left, right = cmp_.left, cmp_.comparators[0]
+            if not (isinstance(left, ast.Call) and isinstance(left.func, ast.Name)
+                    and left.args and not left.keywords
+                    and all(isinstance(x, ast.Constant) for x in left.args)
+                    and isinstance(right, ast.Constant)):
+                continue
+            key = ast.dump(left)
+            if key in seen and seen[key] != right.value:
+                return True
+            seen[key] = right.value
+    return False
+
+
+def _cheat_markers(paths):
+    found = set()
+    for p in paths:
+        try:
+            with open(p, encoding="utf-8", errors="replace") as f:
+                found.update(_CHEAT_RE.findall(f.read()))
+        except OSError:
+            pass
+    return found
 
 
 def _read_saved_int(paths):
@@ -344,6 +399,7 @@ def run_agent(llm, task, model, max_steps=6, max_tokens=600, task_cap=None):
         return [f for f in glob.glob(os.path.join(wd, "*.py")) if f not in test_set]
 
     src_hash = _hashes(src_files())
+    orig_cheat = _cheat_markers(src_files())
 
     def restore_tests():
         for tf, raw in orig_tests.items():
@@ -357,7 +413,16 @@ def run_agent(llm, task, model, max_steps=6, max_tokens=600, task_cap=None):
             restore_tests()
             return False, "Tests were modified and have been restored. Fix mylib.py only."
         ok, tout = _run_tests(tests[0], wd)
+        if ok and (_cheat_markers(src_files()) - orig_cheat):
+            return False, (
+                "Tests pass only through a trick (__eq__/sys.exit/etc.). Fix the real logic; "
+                "if the tests contradict each other, call unsolvable(reason)."
+            )
         return ok, tout
+
+    if is_coding and tests and _tests_contradict(tests):
+        _save_trajectory(task["task_id"], model, 0.0, "UNSOLVABLE", None, [])
+        return "UNSOLVABLE", "tests contradict each other", 0.0
 
     ctx = _build_initial_context(task)
     user_prompt = task["instruction"]
@@ -420,6 +485,8 @@ def run_agent(llm, task, model, max_steps=6, max_tokens=600, task_cap=None):
                     _save_trajectory(task["task_id"], model, spent, "UNSOLVABLE", None, msgs)
                     return "UNSOLVABLE", "model returned empty/unsolvable", spent
 
+                if numeric_task:
+                    ans = _int_answer(ans) or ans
                 return solved("SOLVED", ans)
 
             if fn == "write_file":
@@ -477,7 +544,7 @@ def run_agent(llm, task, model, max_steps=6, max_tokens=600, task_cap=None):
 
     if is_coding and tests and _hashes(tests) == test_hash:
         ok, _ = _run_tests(tests[0], wd)
-        if ok:
+        if ok and not (_cheat_markers(src_files()) - orig_cheat):
             return solved("SOLVED", "DONE")
 
     # Модель посчитала ответ и записала answer.txt, но не успела вызвать finish
